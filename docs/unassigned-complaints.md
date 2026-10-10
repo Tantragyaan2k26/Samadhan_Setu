@@ -1,0 +1,3 @@
+# Unassigned complaint workflow
+
+Complaint creation sets a submission to `SUBMITTED` when no matching active Level 1 officer exists. The application has no background triage or assignment worker, so that record remains pending until an authorized department administrator or super administrator assigns an eligible officer through `POST /api/v1/officer/complaints/[id]/assign`. The manual endpoint supports `SUBMITTED`, `TRIAGED`, `REOPENED`, and `ESCALATED` transitions permitted by the state machine. A future automated processor should be designed as a separate workflow change rather than assumed to exist.

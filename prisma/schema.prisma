@@ -1,0 +1,290 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CITIZEN
+  OFFICER
+  DEPT_ADMIN
+  CMO_VIEWER
+  AUDITOR
+  SUPER_ADMIN
+}
+
+enum ComplaintStatus {
+  DRAFT
+  SUBMITTED
+  TRIAGED
+  ASSIGNED
+  IN_PROGRESS
+  RESOLVED_PENDING
+  CLOSED
+  REOPENED
+  ESCALATED
+  REJECTED
+  MERGED
+}
+
+enum UrgencyLevel {
+  LOW
+  NORMAL
+  HIGH
+  EMERGENCY
+}
+
+model User {
+  id              String          @id @default(uuid())
+  phone           String?         @unique
+  email           String?         @unique
+  name            String?
+  role            String          @default("CITIZEN") // CITIZEN, OFFICER, etc.
+  passwordHash    String?
+  emailVerifiedAt DateTime?
+  phoneVerifiedAt DateTime?
+  isActive        Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  complaints      Complaint[]
+  officer         OfficerProfile?
+  feedback        Feedback[]
+  sessions        AuthSession[]
+}
+
+model AuthSession {
+  id        String    @id @default(uuid())
+  tokenHash String    @unique
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, expiresAt])
+}
+
+model OtpChallenge {
+  id          String    @id @default(uuid())
+  destination String
+  channel     String
+  purpose     String    @default("LOGIN")
+  codeHash    String?
+  providerRef String?
+  attempts    Int       @default(0)
+  expiresAt   DateTime
+  consumedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([destination, purpose, createdAt])
+}
+
+model IdempotencyRecord {
+  key         String   @id
+  requestHash String
+  response    String?
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([expiresAt])
+}
+
+model OutboxEvent {
+  id          String    @id @default(uuid())
+  eventType   String
+  payload     String
+  status      String    @default("PENDING")
+  attempts    Int       @default(0)
+  availableAt DateTime  @default(now())
+  processedAt DateTime?
+  lastError   String?
+  createdAt   DateTime  @default(now())
+
+  @@index([status, availableAt])
+}
+
+model OfficerProfile {
+  id           String      @id @default(uuid())
+  userId       String      @unique
+  user         User        @relation(fields: [userId], references: [id])
+  departmentId String
+  department   Department  @relation(fields: [departmentId], references: [id])
+  districtId   String?
+  district     District?   @relation(fields: [districtId], references: [id])
+  level        Int         @default(1) // 1 to 4
+  designation  String
+  isActive     Boolean     @default(true)
+  complaints   Complaint[]
+}
+
+model Department {
+  id          String           @id @default(uuid())
+  code        String           @unique
+  nameEn      String
+  nameHi      String
+  description String?
+  officers    OfficerProfile[]
+  categories  Category[]
+  complaints  Complaint[]
+}
+
+model Category {
+  id                 String      @id @default(uuid())
+  code               String      @unique
+  departmentId       String
+  department         Department  @relation(fields: [departmentId], references: [id])
+  nameEn             String
+  nameHi             String
+  keywords           String? // JSON or comma-separated keywords
+  slaResponseHours   Int         @default(48)
+  slaResolutionHours Int         @default(360)
+  complaints         Complaint[]
+}
+
+model District {
+  id           String           @id @default(uuid())
+  code         String           @unique
+  nameEn       String
+  nameHi       String
+  headquarters String
+  complaints   Complaint[]
+  officers     OfficerProfile[]
+}
+
+model Complaint {
+  id           String  @id @default(uuid())
+  ticketNo     String  @unique // UK-2026-XXXXXX
+  citizenId    String?
+  citizen      User?   @relation(fields: [citizenId], references: [id])
+  citizenPhone String
+  citizenName  String?
+
+  title          String
+  description    String
+  submissionType String @default("GRIEVANCE") // GRIEVANCE, DEMAND, SUGGESTION
+  language       String @default("hi")
+
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  categoryId   String?
+  category     Category?   @relation(fields: [categoryId], references: [id])
+  districtId   String?
+  district     District?   @relation(fields: [districtId], references: [id])
+
+  villageOrTehsil String?
+  latitude        Float?
+  longitude       Float?
+
+  status          String @default("SUBMITTED") // ComplaintStatus
+  urgency         String @default("NORMAL") // UrgencyLevel
+  escalationLevel Int    @default(1) // 1 to 4
+
+  assignedOfficerId   String?
+  assignedOfficer     OfficerProfile? @relation(fields: [assignedOfficerId], references: [id])
+  assignedOfficerName String?
+
+  slaDueAt       DateTime?
+  remindersCount Int       @default(0)
+  lastRemindedAt DateTime?
+
+  aiSummaryEn  String?
+  aiSummaryHi  String?
+  aiConfidence Float?
+
+  isDuplicateOf   String?
+  supportersCount Int     @default(0)
+
+  sourceChannel String  @default("WEB") // WEB, VOICE, WHATSAPP, BRIDGE
+  bridgeAppRef  String?          @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  events      ComplaintEvent[]
+  attachments Attachment[]
+  feedback    Feedback?
+
+  @@index([districtId, status, createdAt])
+  @@index([departmentId, status, createdAt])
+  @@index([citizenPhone, createdAt])
+  @@index([slaDueAt, status])
+  @@index([citizenId, createdAt])
+  @@index([assignedOfficerId, status])
+}
+
+model ComplaintEvent {
+  id          String    @id @default(uuid())
+  complaintId String
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  actorType   String // CITIZEN, OFFICER, SYSTEM, AI
+  actorName   String?
+  fromStatus  String?
+  toStatus    String
+  reason      String?
+  notes       String?
+  createdAt   DateTime  @default(now())
+}
+
+model Attachment {
+  id          String    @id @default(uuid())
+  complaintId String
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  url         String
+  mimeType    String
+  fileName    String
+  fileSize    Int
+  createdAt   DateTime  @default(now())
+}
+
+model Feedback {
+  id          String    @id @default(uuid())
+  complaintId String    @unique
+  complaint   Complaint @relation(fields: [complaintId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id])
+  rating      Int // 1 to 5
+  resolved    Boolean   @default(true)
+  comment     String?
+  createdAt   DateTime  @default(now())
+}
+
+model Notification {
+  id          String   @id @default(uuid())
+  recipient   String // Phone or Email
+  channel     String // SMS, WHATSAPP, IN_APP
+  templateKey String
+  title       String
+  body        String
+  status      String   @default("DELIVERED") // PENDING, SENT, DELIVERED, FAILED
+  ticketNo    String?
+  createdAt   DateTime @default(now())
+}
+
+model ApplicationRef {
+  id             String   @id @default(uuid())
+  applicationNo  String   @unique
+  serviceName    String
+  applicantName  String
+  phone          String
+  district       String
+  departmentCode String
+  submittedAt    DateTime
+  expectedBy     DateTime
+  currentStatus  String // PENDING, DELAYED, REJECTED, APPROVED
+  delayDays      Int      @default(0)
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  action     String
+  entityType String
+  entityId   String?
+  actorId    String?
+  actorRole  String?
+  ipAddress  String?
+  details    String? // JSON string
+  timestamp  DateTime @default(now())
+}

@@ -1,0 +1,12 @@
+.git
+.next
+node_modules
+.npm-cache
+.tmp
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+coverage
+playwright-report
+test-results

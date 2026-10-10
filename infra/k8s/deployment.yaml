@@ -1,0 +1,183 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: samadhan-setu-web
+  namespace: civic-apps
+  labels:
+    app: samadhan-setu
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: samadhan-setu
+  template:
+    metadata:
+      labels:
+        app: samadhan-setu
+    spec:
+      containers:
+        - name: web
+          image: ghcr.io/uk-gov/samadhan-setu:${IMAGE_TAG}
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+              name: http
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1001
+            runAsGroup: 1001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: next-cache
+              mountPath: /app/.next/cache
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1536Mi"
+          startupProbe:
+            httpGet:
+              path: /api/v1/health/live
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health/live
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health/ready
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: ATTACHMENT_CDN_HOST
+              value: "cdn.samadhan.uk.gov.in"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: samadhan-secrets
+                  key: database-url
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: samadhan-secrets
+                  key: redis-url
+            - name: AUTH_SESSION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: samadhan-secrets
+                  key: auth-session-secret
+            - name: OTP_LOCAL_DELIVERY
+              value: "false"
+            - name: CRON_BEARER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: samadhan-secrets
+                  key: cron-bearer-token
+            - name: TWILIO_ACCOUNT_SID
+              valueFrom:
+                secretKeyRef:
+                  name: samadhan-secrets
+                  key: twilio-account-sid
+            - name: TWILIO_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: samadhan-secrets
+                  key: twilio-auth-token
+            - name: TWILIO_VERIFY_SERVICE_SID
+              valueFrom:
+                secretKeyRef:
+                  name: samadhan-secrets
+                  key: twilio-verify-service-sid
+            - name: TWILIO_MESSAGING_SERVICE_SID
+              valueFrom:
+                secretKeyRef:
+                  name: samadhan-secrets
+                  key: twilio-messaging-service-sid
+            - name: TWILIO_PHONE_NUMBER
+              valueFrom:
+                secretKeyRef:
+                  name: samadhan-secrets
+                  key: twilio-phone-number
+            - name: SMTP_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: samadhan-secrets
+                  key: smtp-host
+            - name: SMTP_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: samadhan-secrets
+                  key: smtp-port
+            - name: SMTP_USER
+              valueFrom:
+                secretKeyRef:
+                  name: samadhan-secrets
+                  key: smtp-user
+            - name: SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: samadhan-secrets
+                  key: smtp-password
+            - name: SMTP_FROM
+              valueFrom:
+                secretKeyRef:
+                  name: samadhan-secrets
+                  key: smtp-from
+            - name: SENTRY_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: samadhan-secrets
+                  key: sentry-dsn
+            - name: NEXT_PUBLIC_SENTRY_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: samadhan-secrets
+                  key: next-public-sentry-dsn
+            - name: METRICS_BEARER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: samadhan-secrets
+                  key: metrics-bearer-token
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: next-cache
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: samadhan-setu-service
+  namespace: civic-apps
+spec:
+  selector:
+    app: samadhan-setu
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 3000
+  type: ClusterIP

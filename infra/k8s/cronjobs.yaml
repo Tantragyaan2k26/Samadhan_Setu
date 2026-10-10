@@ -1,0 +1,94 @@
+# The existing samadhan-secrets Secret must contain key cron-bearer-token,
+# provisioned by the cluster secret manager; credentials are not stored here.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: samadhan-outbox
+  namespace: civic-apps
+spec:
+  schedule: "* * * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 45
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 50
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: invoke
+              image: curlimages/curl:8.10.1
+              command: ["/bin/sh", "-c"]
+              args:
+                - curl --fail --silent --show-error --max-time 40 -X POST "http://samadhan-setu-service.civic-apps.svc.cluster.local/api/v1/cron/outbox" -H "Authorization: Bearer ${CRON_BEARER_TOKEN}"
+              env:
+                - name: CRON_BEARER_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: samadhan-secrets
+                      key: cron-bearer-token
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: samadhan-sla-escalator
+  namespace: civic-apps
+spec:
+  schedule: "* * * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 45
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 50
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: invoke
+              image: curlimages/curl:8.10.1
+              command: ["/bin/sh", "-c"]
+              args:
+                - curl --fail --silent --show-error --max-time 40 -X POST "http://samadhan-setu-service.civic-apps.svc.cluster.local/api/v1/cron/sla" -H "Authorization: Bearer ${CRON_BEARER_TOKEN}"
+              env:
+                - name: CRON_BEARER_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: samadhan-secrets
+                      key: cron-bearer-token
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: samadhan-expired-record-cleanup
+  namespace: civic-apps
+spec:
+  schedule: "0 3 * * *"
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 3600
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 120
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: invoke
+              image: curlimages/curl:8.10.1
+              command: ["/bin/sh", "-c"]
+              args:
+                - curl --fail --silent --show-error --max-time 90 -X POST "http://samadhan-setu-service.civic-apps.svc.cluster.local/api/v1/cron/cleanup" -H "Authorization: Bearer ${CRON_BEARER_TOKEN}"
+              env:
+                - name: CRON_BEARER_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: samadhan-secrets
+                      key: cron-bearer-token

@@ -1,0 +1,29 @@
+node_modules/
+.next/
+.output/
+out/
+coverage/
+playwright-report/
+test-results/
+.vercel/
+.turbo/
+.npm-cache/
+.tmp/
+
+# Local environment files (keep the committed template only).
+.env
+.env.*
+!.env.example
+
+# Generated files and local databases.
+*.tsbuildinfo
+next-env.d.ts
+dev.db
+*.db-journal
+
+# OS/editor noise.
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+npm-debug.log*
